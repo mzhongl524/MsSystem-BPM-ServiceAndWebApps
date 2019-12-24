@@ -1,13 +1,18 @@
-﻿{
+{
   "profiles": {
     "MsSystem.Sys.API": {
       "commandName": "Project",
-      "launchBrowser": false,
       "launchUrl": "api/values",
-      "applicationUrl": "http://localhost:5002",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
-      }
+      },
+      "applicationUrl": "http://localhost:5002"
+    },
+    "Docker": {
+      "commandName": "Docker",
+      "launchUrl": "{Scheme}://{ServiceHost}:{ServicePort}/api/values",
+      "environmentVariables": {},
+      "httpPort": 55000
     }
   }
 }

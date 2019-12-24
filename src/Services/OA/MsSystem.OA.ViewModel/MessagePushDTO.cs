@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace MsSystem.OA.ViewModel
 {
@@ -19,5 +20,25 @@ namespace MsSystem.OA.ViewModel
     {
         public string GroupName { get; set; }
         public string MsgJson { get; set; }
+    }
+
+    public class MessagePushSomBodyDTO
+    {
+        public List<long> UserIds { get; set; }
+
+        /// <summary>
+        /// 发送人
+        /// </summary>
+        public long Sender { get; set; }
+
+        public string Title { get; set; }
+        /// <summary>
+        /// 消息内容
+        /// </summary>
+        public string MsgJson { get; set; }
+        /// <summary>
+        /// 跳转地址
+        /// </summary>
+        public string Link { get; set; }
     }
 }

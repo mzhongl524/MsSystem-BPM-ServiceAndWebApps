@@ -1,6 +1,4 @@
-﻿using Autofac;
-using Autofac.Extensions.DependencyInjection;
-using AutoMapper;
+﻿using AutoMapper;
 using JadeFramework.Cache;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
@@ -11,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.OpenApi.Models;
 using MsSystem.WF.API.Filters;
 using MsSystem.WF.API.Infrastructure;
 using MsSystem.WF.IRepository;
@@ -18,12 +17,14 @@ using MsSystem.WF.IService;
 using MsSystem.WF.Repository;
 using MsSystem.WF.Service;
 using MsSystem.WF.ViewModel;
-using NLog.Extensions.Logging;
-using NLog.Web;
 using Polly;
 using Polly.Extensions.Http;
+using Serilog;
+using Serilog.Sinks.Elasticsearch;
 using System;
+using System.IO;
 using System.Net.Http;
+using System.Reflection;
 
 namespace MsSystem.WF.API
 {
@@ -32,36 +33,35 @@ namespace MsSystem.WF.API
         public Startup(IConfiguration configuration)
         {
             Configuration = configuration;
+            Log.Logger = new LoggerConfiguration()
+                .Enrich.FromLogContext()
+                .WriteTo.MySQL(Configuration["LogConfig:MySQL"], tableName: "wflog")
+                .WriteTo.Elasticsearch(new ElasticsearchSinkOptions(new Uri(Configuration["LogConfig:ElasticsearchUri"]))
+                {
+                    AutoRegisterTemplate = true,
+                })
+            .CreateLogger();
         }
 
         public IConfiguration Configuration { get; }
 
         // This method gets called by the runtime. Use this method to add services to the container.
-        public IServiceProvider ConfigureServices(IServiceCollection services)
+        public void ConfigureServices(IServiceCollection services)
         {
+            //services.AddZipkin(Configuration.GetSection(nameof(ZipkinOptions)));
+
             services.Configure<AppSettings>(Configuration);
             IOptions<AppSettings> appSettings = services.BuildServiceProvider().GetService<IOptions<AppSettings>>();
 
             services.AddCustomMvc(appSettings).AddHttpClientServices();
 
-            var container = new ContainerBuilder();
-            container.Populate(services);
-            return new AutofacServiceProvider(container.Build());
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
-        public void Configure(IApplicationBuilder app, IHostingEnvironment env, ILoggerFactory loggerFactory)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env, ILoggerFactory loggerFactory)
         {
-            loggerFactory.AddNLog();
-            if (env.IsDevelopment())
-            {
-                env.ConfigureNLog("NLog.Development.config");
-            }
-            else
-            {
-                env.ConfigureNLog("NLog.config");
-            }
-
+            //app.UseZipkin();
+            loggerFactory.AddSerilog();
             app.UseCors("CorsPolicy");
 
             app.UseResponseCompression();
@@ -69,13 +69,29 @@ namespace MsSystem.WF.API
             {
                 ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
             });
-
-            app.UseAuthentication();
-            app.UseMvc();
-            app.UseServiceRegistration(new ServiceCheckOptions
+            app.UseStaticFiles();
+            string apiName = Assembly.GetExecutingAssembly().GetName().Name;
+            app.UseSwagger(options =>
             {
-                HealthCheckUrl = "/api/HealthCheck/ping"
+                options.RouteTemplate = "{documentName}/swagger.json";
+            })
+            .UseSwaggerUI(options =>
+            {
+                options.ShowExtensions();
+                options.EnableValidator(null);
+                options.SwaggerEndpoint($"/{apiName}/swagger.json", $"{apiName} V1");
             });
+            app.UseRouting();
+            app.UseAuthentication();
+            app.UseAuthorization();
+            app.UseEndpoints(endpoints =>
+            {
+                endpoints.MapControllers();
+            });
+            //app.UseServiceRegistration(new ServiceCheckOptions
+            //{
+            //    HealthCheckUrl = "api/HealthCheck/Ping"
+            //});
         }
 
     }
@@ -84,9 +100,9 @@ namespace MsSystem.WF.API
         public static IServiceCollection AddCustomMvc(this IServiceCollection services, IOptions<AppSettings> appSettings)
         {
             //缓存
-            services.AddScoped<ICachingProvider, MemoryCachingProvider>();
             services.AddMemoryCache();
-            services.AddServiceRegistration();
+            services.AddScoped<ICachingProvider, MemoryCachingProvider>();
+            //services.AddServiceRegistration();
             services.AddResponseCompression();
 
             services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -112,8 +128,18 @@ namespace MsSystem.WF.API
             services.AddScoped<ICachingProvider, MemoryCachingProvider>();
             services.AddAutoMapper();
 
-            services.AddMvc(option => option.Filters.Add(typeof(HttpGlobalExceptionFilter)))
-                .AddJsonOptions(op => op.SerializerSettings.ContractResolver = new Newtonsoft.Json.Serialization.DefaultContractResolver());//修改默认首字母为大写
+            services.AddControllers(option => option.Filters.Add(typeof(HttpGlobalExceptionFilter)))
+                .AddNewtonsoftJson(op => op.SerializerSettings.ContractResolver = new Newtonsoft.Json.Serialization.DefaultContractResolver());//修改默认首字母为大写
+
+            services.AddSwaggerGen(options =>
+            {
+                string apiName = Assembly.GetExecutingAssembly().GetName().Name;
+                options.SwaggerDoc(apiName, new OpenApiInfo { Title = "工作流接口", Version = "v1" });
+                var xmlFile = $"{apiName}.xml";
+                var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+                options.IncludeXmlComments(xmlPath);
+                //options.OperationFilter<AddAuthTokenHeaderParameter>();
+            });
 
             services.AddCors(options =>
             {

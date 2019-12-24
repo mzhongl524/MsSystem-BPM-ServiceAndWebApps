@@ -1,0 +1,636 @@
+﻿@using Microsoft.Extensions.Configuration;
+@{
+    ViewData["Title"] = "聊天";
+    Layout = "~/Views/Shared/_LayoutJQ.cshtml";
+    UserIdentity user = ViewBag.User;
+}
+@inject MsSystem.Web.Infrastructure.TokenClient tokenClient
+@inject Microsoft.Extensions.Configuration.IConfiguration configuration
+@section css{
+    <style>
+        body {
+            background: #fff !important;
+        }
+
+        .ibox-content {
+            border: none !important;
+        }
+
+        .chat-main {
+            display: inline-block;
+            background: #eee;
+            border-radius: 3px;
+        }
+
+        .chat-main-left {
+            width: 200px;
+            float: left;
+            overflow-y: auto;
+            display: none;
+            border: 1px solid #ddd;
+            box-shadow: 0px 0px 10px #ddd;
+            border-right: none;
+        }
+
+        .chat-main-right {
+            width: 600px;
+            float: left;
+            height: 550px;
+            border: 1px solid #ddd;
+            box-shadow: 0px 0px 10px #ddd;
+            border-radius: 3px;
+        }
+
+        .chat-users {
+            margin-left: 0px;
+            height: 550px;
+        }
+
+        .chat-user {
+            cursor: pointer;
+            margin: 10px;
+            border-radius: 3px;
+        }
+
+            .chat-user.active {
+                background: #fff;
+                border-radius: 4px;
+            }
+
+        .currentUser {
+            background: #eee;
+            font-size: 12px;
+            text-align: left;
+            line-height: 60px;
+            height: 60px;
+            color: #333;
+            font-weight: bold;
+            opacity: .8;
+        }
+
+            .currentUser img {
+                width: 45px;
+                height: 45px;
+                margin-left: 10px;
+            }
+
+        .message-count {
+            background: red;
+            color: #fff;
+            width: 15px;
+            height: 15px;
+            text-align: center;
+            border-radius: 50%;
+            display: none;
+            margin: 2px;
+            line-height: 15px;
+        }
+
+        .chatim {
+            position: absolute;
+            right: 0px;
+            background: #fff;
+            width: 260px;
+            border-radius: 3px;
+            bottom: 0px;
+        }
+
+            .chatim.active {
+                box-shadow: 0px 0px 10px #eee;
+                border: 1px solid #eee;
+            }
+
+        .chatim-title {
+            height: 55px;
+            line-height: 55px;
+            background: #eee;
+            padding-left: 10px;
+        }
+
+        .chatim-body {
+            height: 450px;
+            overflow-y: auto;
+        }
+
+        .chatim-userbox {
+            margin: 10px;
+        }
+
+        .chatim-userbox-category {
+            cursor: pointer;
+        }
+
+        .chatim-userbox-online a {
+            color: #333;
+        }
+
+        .chatim-userbox-notonline a {
+            color: #ddd;
+        }
+
+        .chatim ul {
+            list-style: none;
+            margin: 0px;
+            padding: 0px;
+        }
+
+            .chatim ul li {
+                cursor: pointer;
+                margin: 10px;
+            }
+
+        .chat-user:not(.active):hover {
+            background: #fff;
+        }
+
+        .chat-user a {
+            margin-left: 10px;
+        }
+
+        .chat-user-name {
+            text-align: left;
+        }
+
+            .chat-user-name .chat-close {
+                width: 16px;
+                height: 16px;
+                line-height: 16px;
+                border-radius: 50%;
+                background: #ddd;
+                color: #fff;
+                font-size: 12px;
+                margin-left: 30px;
+                position: relative;
+                text-align: center;
+                float: right;
+                display: none;
+            }
+
+            .chat-user-name:hover .chat-close {
+                display: inline-block;
+                background: #FF0000;
+            }
+
+        .chatim-user img {
+            width: 35px;
+            height: 35px;
+        }
+
+        .message-input {
+            border-right: none;
+            border-left: none;
+        }
+
+        #sendMessage {
+            position: relative;
+            top: -35px;
+            float: right;
+            border-radius: 0px;
+            width: 70px;
+        }
+
+        .chatim-title-username {
+            font-size: 16px;
+            font-weight: bold;
+            margin: 0px 10px;
+        }
+
+        .chatim-title img {
+            width: 40px;
+            height: 40px;
+            margin-top: -3px;
+        }
+
+        .chatim-user span {
+            margin: 0px 10px;
+        }
+
+        .chatim-userbox-category span {
+            width: 12px;
+            display: inline-block;
+            font-size: 14px;
+        }
+
+        .chatim-footer {
+            text-align: center;
+            padding-bottom: 10px;
+        }
+
+            .chatim-footer a {
+                font-size: 18px;
+                color: #fff;
+                cursor: pointer;
+                width: 38px;
+                height: 38px;
+                display: inline-block;
+                line-height: 36px;
+                border-radius: 50%;
+                background: #0e9aef;
+                box-shadow: 0px 0px 5px #0e9aef;
+                text-align: center;
+            }
+
+        .more-msg {
+            font-size: 12px;
+            color: #4ea9e9;
+        }
+
+            .more-msg:hover {
+                text-decoration: underline;
+                color: #4ea9e9;
+            }
+    </style>
+}
+@section scripts{
+    <script src="/lib/signalr/dist/browser/signalr.min.js"></script>
+    <script>
+        $(function () {
+            $('.pace.pace-active').remove();
+            var chattinguserids = [];//正在聊天的人
+            var currentUserid = "@user.UserId";
+            const connection = new signalR.HubConnectionBuilder()
+                .withUrl("@(configuration.GetSection("MsApplication").GetValue<string>("url") + "/hub/oa/chatHub")", {
+                    transport: signalR.HttpTransportType.LongPolling,
+                    accessTokenFactory: () => {
+                        return "Authorization", getToken();
+                    }
+                }).build();
+            connection.start().then(function () {
+                connection.invoke('InitMessage', currentUserid);
+                }).catch(function (err) {
+                return console.error(err.toString());
+                });
+            //获取聊天信息
+            connection.on("ReceiveChater", function (data) {
+                // 声音
+                var audio= new Audio("/src/oa/message/didi.mp3");
+                audio.play();
+                //判断是否已打开
+                var _target = $('.users-list .chat-user[data-userid=' + data.sender + ']');
+                var userlength = $('.users-list .chat-user').length;
+                if (_target[0] == undefined) {
+                    var issactive = userlength == 0 ? true : false;
+                    var username = $('.chatim-body a[data-userid=' + data.sender + ']').text();
+                    var img = $('.chatim-body a[data-userid=' + data.sender + ']').parent().prev().attr('src');
+                    addLeftUser(data.sender, username, img, issactive);
+                    resetDiscussionTitle(data.sender, username, img);
+                }
+                var chatuser = $('.users-list .chat-user[data-userid=' + data.sender + ']');
+                var msgcount = chatuser.find('.message-count').text();
+                chatuser.find('.message-count').show();
+                if (msgcount == '') {
+                    chatuser.find('.message-count').text(1);
+                } else {
+                    chatuser.find('.message-count').text(parseInt(msgcount) + 1);
+                }
+                var headimg = chatuser.find('img').attr('src');
+                var username = chatuser.find('.chat-user-name a').text();
+                var html = '';
+                html += '<div class="chat-message chat-left">';
+                html += '<img class="message-avatar" src="' + headimg +'" alt="">';
+                html += '<div class="message">';
+                html += '<div><a class="message-author">' + username +'</a>';
+                html += '<span class="message-date">' + data.time+'</span></div>';
+                html += '<span class="message-content">';
+                html += data.message;
+                html += '</span>';
+                html += '</div>';
+                html += '</div>';
+                addOrShowDiscussion(data.sender, false);
+                var relBox = $('.chat-discussion[data-touser=' + data.sender + ']');
+                relBox.append(html);
+                srcollBottom(relBox);
+            });
+            //获取在线人列表
+            connection.on("RefreshOnliner", currentuserid => {
+                axios.post('/OA/Chat/GetChatUserAsync', chattinguserids).then(function (response) {
+                    var data = response.data;
+                    $('.chatim-userbox ul').empty();
+                    $.each(data, function (index, item) {
+                        var html = '<li>';
+                        html += '<div class="chatim-user">';
+                        html += '<img src="' + item.HeadImg+'" />';
+                        html += '<span><a data-userid="' + item.UserId + '">' + item.UserName + '</a></span>';
+                        html += '</div>';
+                        html += '</li>';
+                        if (item.IsOnline == 1) {
+                            $('.chatim-userbox-online ul').append(html);
+                        } else {
+                            $('.chatim-userbox-notonline ul').append(html);
+                        }
+                    });
+                });
+            });
+            function getToken() {
+                return '@tokenClient.GetToken().Result';
+            }
+            document.getElementById('sendMessage').addEventListener('click', function (e) {
+                e.preventDefault();
+                sendMessage();
+            });
+            $('textarea[name=message]').on('keydown', function (e) {
+                if (e.keyCode != 13) {
+                    return;
+                } else {
+                    event.preventDefault();
+                    e.returnValue = false;
+                    sendMessage();
+                }
+            });
+            $('.users-list').on('click', '.chat-user', function () {
+                $('.users-list .chat-user').removeClass('active');
+                $(this).addClass('active');
+                var currentDom = $(this).find('.chat-user-name a');
+                var userid = currentDom.attr('data-userid');
+                var imgsrc = $(this).find('img').attr('src');
+                resetDiscussionTitle(userid, currentDom.text(), imgsrc);
+                addOrShowDiscussion(userid, true);
+                resetUserMessageCount(userid);
+                addOnlines(userid);
+                $('.chat-message-form').show();
+            });
+            function sendMessage() {
+                var userid = $('#ToUserId').val();
+                var message = $('textarea[name=message]').val();
+                if (message == '' || message.trim() == '') {
+                    return;
+                }
+                connection.invoke('SendMessage', userid, currentUserid, message);
+                $('textarea[name=message]').val('');
+                var time = $.getCurrentTime();
+                var html = '';
+                html += '<div class="chat-message chat-right">';
+                html += '<img class="message-avatar" src="@user.HeadImg" alt="">';
+                html += '<div class="message">';
+                html += '<div><a class="message-author">@user.UserName</a>';
+                html += '<span class="message-date">' + time + '</span></div>';
+                html += '<span class="message-content">';
+                html += message;
+                html += '</span>';
+                html += '</div>';
+                html += '</div>';
+                var chatdis = $('.chat-discussion[data-touser=' + userid + ']');
+                chatdis.append(html);
+                resetUserMessageCount(userid);
+                srcollBottom(chatdis);
+            }
+            function srcollBottom(container) {
+                var scrollToContainer = container.find('.chat-message :last');
+                container.animate({
+                    scrollTop: scrollToContainer.offset().top - container.offset().top + container.scrollTop()
+                }, 800);
+            }
+            function resetUserMessageCount(userid) {
+                var chatuser = $('.users-list .chat-user[data-userid=' + userid + ']');
+                chatuser.find('.message-count').text('').hide();
+            }
+            function addOnlines(userid) {
+                var flag = false;
+                for (var i = 0; i < chattinguserids.length; i++) {
+                    if (chattinguserids[i] == userid) {
+                        flag = true;
+                    }
+                }
+                if (!flag) {
+                    chattinguserids.push(userid);
+                }
+            }
+            function showChatBox(userid) {
+                var length = $('.users-list .chat-user').length;
+                if (length <= 1) {
+                    $('.chat-main-left').show();
+                }
+                addOrShowDiscussion(userid, true);
+            }
+            function addOrShowDiscussion(userid, toTop) {
+                var disc = $('.chat-discussion[data-touser=' + userid + ']');
+                if (disc.length == 1) {
+                    $('.chat-discussion').hide();
+                    disc.show();
+                } else {
+                    var html = '';
+                    if ($('.chat-discussion').length == 1 || toTop == true) {
+                        $('.chat-discussion').hide();
+                        html = '<div class="chat-discussion" data-pageindex="0" data-touser="' + userid + '"><a class="more-msg"><i class="fa fa-clock-o"></i>查看更多消息</a></div>';
+                    } else {
+                        html = '<div class="chat-discussion" style="display:none" data-pageindex="0" data-touser="' + userid + '"><a class="more-msg"><i class="fa fa-clock-o"></i>查看更多消息</a></div>';
+                    }
+                    $('.chat-discussion:last').after(html)
+                }
+                $('.chat-message-form').show();
+            }
+            function resetDiscussionTitle(userid, username,imgsrc) {
+                $('#ToUserId').val(userid);
+                $('.currentUser span').text(username);
+                $('.currentUser img').attr('src', imgsrc);
+            }
+            function addLeftUser(userid, username, img,isactive) {
+                var html = '';
+                if (isactive) {
+                    $('.chat-user').removeClass('active');
+                    html += '<div class="chat-user active" data-userid="' + userid + '">';
+                } else {
+                    html += '<div class="chat-user" data-userid="' + userid + '">';
+                }
+                html += '<span class="pull-right message-count"></span>';
+                html += '<img class="chat-avatar" src="' + img + '" alt="">';
+                html += '<div class="chat-user-name"><a data-userid="' + userid + '">' + username + '</a><span class="chat-close"><i class="fa fa-close"></i></span>';
+                html += '</div>';
+                html += '</div>';
+                $('.users-list').append(html);
+                $('.chat-main-left').show();
+            }
+            $('.chatim-userbox-category').on('click', function () {
+                var type = $(this).attr('data-type');
+                if (type == 1) {
+                    $(this).attr('data-type', 0);
+                    $(this).find('span i').attr('class', 'fa fa-angle-right');
+                    $(this).next().hide();
+                } else {
+                    $(this).attr('data-type', 1);
+                    $(this).find('span i').attr('class', 'fa fa-angle-down');
+                    $(this).next().show();
+                }
+            });
+            $('.chatim-userbox-online ul').on('dblclick', 'li', function () {
+                var userid = $(this).find('a').attr('data-userid');
+                var username = $(this).find('a').text();
+                var _target = $('.users-list .chat-user[data-userid=' + userid + ']');
+                if (_target[0] == undefined) {
+                    var img = $(this).find('img').attr('src');
+                    addLeftUser(userid, username, img, true);
+                    showChatBox(userid);
+                } else {
+                    $('.users-list .chat-user').removeClass('active');
+                    _target.addClass('active');
+                    addOrShowDiscussion(userid, true);
+                }
+                var imgsrc = $(this).find('img').attr('src');
+                resetDiscussionTitle(userid, username, imgsrc);
+            });
+            $('.users-list').on('click', '.chat-close', function (e) {
+                e.stopPropagation();
+                var currentUser = $(this).parent().parent();
+                //当前会话只有一个情况
+                var uleg = $('.users-list .chat-user').length;
+                if (uleg == 1) {
+                    currentUser.remove();
+                    $('.chat-discussion').hide();
+                    $('.chat-discussion:first').show();
+                    resetDiscussionTitle('', '','/uploadfile/342bd59b-edf4-48cf-aa27-d13e5a0b70df.jpeg');
+                    $('.chat-main-left,.chat-message-form').hide();
+                } else {
+                    var prevUser = currentUser.prev();
+                    if (prevUser.length == 1) {
+                        var userid = prevUser.find('a').attr('data-userid');
+                        var username = prevUser.find('a').text();
+                        if (currentUser.hasClass('active')) {
+                            prevUser.addClass('active');
+                        }
+                        addOrShowDiscussion(userid);
+                        var imgsrc = prevUser.find('img').attr('src');
+                        resetDiscussionTitle(userid, username, imgsrc)
+                    } else {
+                        var nextUser = currentUser.next();
+                        if (nextUser.length == 1) {
+                            var nextUserId = nextUser.find('a').attr('data-userid');
+                            var nextUsername = nextUser.find('a').text();
+                            if (currentUser.hasClass('active')) {
+                                nextUser.addClass('active');
+                            }
+                            addOrShowDiscussion(nextUserId);
+                            var imgsrc = nextUser.find('img').attr('src');
+                            resetDiscussionTitle(nextUserId, nextUsername, imgsrc)
+                        }
+                    }
+                    currentUser.remove();
+                }
+            });
+
+            $('.chatim-footer').on('click', 'a', function () {
+                var type = $(this).attr('data-type');
+                if (type == 1) {
+                    $(this).attr('data-type', 0);
+                    $('.chatim-title,.chatim-body').fadeOut();
+                    $(this).find('i').attr('class', 'fa fa-comments');
+                    $('.chatim').removeClass('active');
+                } else {
+                    $(this).attr('data-type', 1);
+                    $('.chatim-title,.chatim-body').fadeIn();
+                    $(this).find('i').attr('class', 'fa fa-close');
+                    $('.chatim').addClass('active');
+                }
+            });
+            $('.chat-main-right').on('click', 'a.more-msg', function () {
+                var _this = $(this);
+                var pageindex = _this.parent().attr('data-pageindex');
+                var receiver = _this.parent().attr('data-touser');
+                var url = '/OA/Chat/GetChatListAsync?PageIndex=' + pageindex + '&Receiver=' + receiver + '';
+                axios.get(url).then(function (response) {
+                    var data = response.data;
+                    if (data.length > 0) {
+                        var ToUserId = $('#ToUserId').val();
+                        var currentDis = $('.chat-discussion[data-touser=' + ToUserId + ']');
+                        currentDis.find('a.more-msg').hide();
+                        var html = '<a class="more-msg"><i class="fa fa-clock-o"></i>查看更多消息</a>';
+                        $.each(data, function (index, item) {
+                            var headimg = '';
+                            var username = '';
+                            if (item.Sender == '@user.UserId') {
+                                headimg = '@user.HeadImg';
+                                username = '@user.UserName';
+                                html += '<div class="chat-message chat-right">';
+                            } else {
+                                headimg = $('.currentUser img').attr('src');
+                                username = $('.currentUser span').text();
+                                html += '<div class="chat-message chat-left">';
+                            }
+                            var time = $.unixToDate(item.CreateTime, true);
+                            html += '<img class="message-avatar" src="' + headimg + '" alt="">';
+                            html += '<div class="message">';
+                            html += '<div><a class="message-author">' + username + '</a>';
+                            html += '<span class="message-date">' + time + '</span></div>';
+                            html += '<span class="message-content">';
+                            html += item.Message;
+                            html += '</span>';
+                            html += '</div>';
+                            html += '</div>';
+                        });
+                        var addpageindex = pageindex == 0 ? 1 : pageindex;
+                        if (addpageindex == 1) {
+                            currentDis.empty();
+                        }
+                        currentDis.prepend(html);
+                        currentDis.attr('data-pageindex', parseInt(addpageindex) + 1);
+                    } else {
+                        _this.hide();
+                    }
+                });
+            });
+        });
+    </script>
+}
+<div class="wrapper-content">
+    <div class="row">
+        <div class="ibox">
+            <div class="ibox-content">
+                <div class="row" style="margin:0px auto;text-align: center;">
+                    <div class="chat-main">
+                        <div class="chat-main-left">
+                            <div class="chat-users">
+                                <div class="users-list"></div>
+                            </div>
+                        </div>
+                        <div class="chat-main-right">
+                            <div class="currentUser">
+                                <img src="/uploadfile/342bd59b-edf4-48cf-aa27-d13e5a0b70df.jpeg" />
+                                <span></span>
+                                <input type="hidden" id="ToUserId" value="" />
+                            </div>
+                            <div class="chat-discussion" data-touser="">
+                                <h3>
+                                    WEB 在线聊天系统
+                                </h3>
+                            </div>
+                            <div class="chat-message-form" style="display:none">
+                                <div class="form-group">
+                                    <textarea class="form-control message-input" name="message"></textarea>
+                                </div>
+                                <button class="btn btn-primary" id="sendMessage" title="可回车发送">发送</button>
+                            </div>
+                        </div>
+                        <div class="clear"></div>
+                    </div>
+                </div>
+
+                <div class="chatim active">
+                    <div class="chatim-title">
+                        <img src="@user.HeadImg" />
+                        <span class="chatim-title-username">
+                            @user.UserName
+                        </span>
+                        <span class="green">在线</span>
+                    </div>
+                    <div class="chatim-body">
+                        <div class="chatim-userbox chatim-userbox-online">
+                            <div class="chatim-userbox-category" data-type="1">
+                                <span><i class="fa fa-angle-down"></i></span>在线用户
+                            </div>
+                            <ul></ul>
+                        </div>
+                        <div class="chatim-userbox chatim-userbox-notonline">
+                            <div class="chatim-userbox-category" data-type="0">
+                                <span><i class="fa fa-angle-right"></i></span>未在线用户
+                            </div>
+                            <ul style="display:none"></ul>
+                        </div>
+                    </div>
+
+                    <div class="chatim-footer">
+                        <a data-type="1"><i class="fa fa-close"></i></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

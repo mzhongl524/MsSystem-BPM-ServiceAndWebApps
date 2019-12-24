@@ -1,4 +1,5 @@
-﻿@using JadeFramework.WorkFlow
+﻿@*系统定制流程*@
+@using JadeFramework.WorkFlow
 @using JadeFramework.Core
 @using JadeFramework.Core.Extensions
 @model WorkFlowProcess
@@ -22,6 +23,8 @@
 <div class="btn-group btn-group-sm noprint" id="flowmenus">
     <input type="hidden" asp-for="FlowId" />
     <input type="hidden" asp-for="InstanceId" />
+    <input type="hidden" value="@Model.FlowData.IsFinish" name="isFinish" />
+    <input type="hidden" value="@Model.FlowData.Status" name="flowStatus" />
     @foreach (var item in Model.Menus)
     {
         var buttonType = (WorkFlowMenu)item;
@@ -76,6 +79,7 @@
             case WorkFlowMenu.Throgh:
                 break;
             case WorkFlowMenu.Assign:
+                cls = "fa fa-hand-pointer-o";
                 break;
             case WorkFlowMenu.CC:
                 break;
@@ -129,6 +133,7 @@ else
     $('button[name=WorkFlowBtn][data-typename=@WorkFlowMenu.FlowImage]').on('click', function () {
         utils.open({
             title: '流程图查看',
+            area: ['900px', '600px'],
             content: '/WF/WorkFlowInstance/FlowImage?@("flowid="+Model.FlowId+"&InstanceId=" + Model.InstanceId)'
         });
     });
@@ -146,13 +151,7 @@ else
     }
     @if (!Model.Menus.Contains((int)WorkFlowMenu.Submit) && !Model.Menus.Contains((int)WorkFlowMenu.Save))
     {
-        <text>
-        var form = document.forms[0];
-        for (var i = 0; i < form.length; i++) {
-            var element = form.elements[i];
-            element.disabled = "true";
-        }
-        </text>
+    <text> $.setFormDisabled(); </text>
     }
     @if (Model.Menus.Contains((int)WorkFlowMenu.Submit))
     {
@@ -249,15 +248,18 @@ else
     }
     @if (Model.Menus.Contains((int)WorkFlowMenu.Agree)|| Model.Menus.Contains((int)WorkFlowMenu.Deprecate)
         || Model.Menus.Contains((int)WorkFlowMenu.ReSubmit) || Model.Menus.Contains((int)WorkFlowMenu.Withdraw)
-        || Model.Menus.Contains((int)WorkFlowMenu.View))
+        || Model.Menus.Contains((int)WorkFlowMenu.View) || Model.Menus.Contains((int)WorkFlowMenu.Assign))
     {
     <text>
     var get_modal = function (menutype, content, tipmsg) {
+        if (tipmsg == undefined) {
+            tipmsg = "";
+        }
         var html = '<div class="modal" style="overflow: auto;" tabindex="-1">';
         html += '       <div class="modal-dialog">';
         html += '           <div class="modal-content">';
         html += '               <div class="modal-header">';
-        html += '                   <a type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</a>';
+        html += '                   <a class="close" data-dismiss="modal" aria-hidden="true">&times;</a>';
         html += '                   <h4 class="modal-title">【@Model.FlowName】'+ menutype + ' 审批意见</h4>';
         html += '               </div>';
         html += '               <div class="modal-body ui-front">';
@@ -359,11 +361,14 @@ else
     {
     <text>
     var back_modal = function (menutype, content, tipmsg) {
+        if (tipmsg == undefined) {
+            tipmsg = "";
+        }
         var html = '<div class="modal" style="overflow: auto;" tabindex="-1">';
         html += '	    <div class="modal-dialog">';
         html += '		    <div class="modal-content">';
         html += '		        <div class="modal-header">';
-        html += '				    <a type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</a>';
+        html += '				    <a class="close" data-dismiss="modal" aria-hidden="true">&times;</a>';
         html += '				    <h4 class="modal-title">【@Model.FlowName】' + menutype + ' 审批意见</h4>';
         html += '			    </div>';
         html += '			    <div class="modal-body ui-front">退回节点：';
@@ -431,7 +436,7 @@ else
         html += '	    <div class="modal-dialog">';
         html += '		    <div class="modal-content">';
         html += '			    <div class="modal-header">';
-        html += '				    <a type="button" class="close"';
+        html += '				    <a class="close"';
         html += '					    data-dismiss="modal" aria-hidden="true">&times;</a>';
         html += '				    <h4 class="modal-title">审批意见</h4>';
         html += '			    </div>';
@@ -454,13 +459,13 @@ else
                 if (response.data.Result) {
                     html = '<div id="vertical-timeline" class="vertical-container light-timeline">';
                     $.each(response.data.Data, function (index, item) {
-                        var icon = getApprovalIcon(item.TransitionType);
+                        var obj = getApprovalIcon(item.TransitionType);
                         html += '<div class="vertical-timeline-block">';
-                        html += '<div class="vertical-timeline-icon white-bg"><i class="' + icon +'"></i></div>';
+                        html += '<div class="vertical-timeline-icon white-bg" title="' + obj.title + '"><i class="' + obj.icon + '"></i></div>';
                         html += '<div class="vertical-timeline-content" style="padding: 0.4em;">';
                         html += '<p style="margin:0px;border-bottom: 1px solid #f1f1f1;">';
                         html += '<strong>【' + item.NodeName + '】</strong>&nbsp;&nbsp;' + item.CreateUserName;
-                        if (item.TransitionType != null) {
+                        if (item.TransitionType != null || item.NodeName == '结束') {
                             html += '<span class="vertical-date" style="float:right"><small style="color:#0e9aef;">' + $.unixToDate(item.CreateTime, true) + '</small></span>';
                         }
                         html +='</p>'
@@ -478,22 +483,44 @@ else
             }
         });
         function getApprovalIcon(type) {
+            var obj = {
+                "icon": null,
+                "title": null
+            };
             switch (type) {
                 case 1:
-                    return "fa fa-play green";
+                    obj.icon = "fa fa-play green";
+                    obj.title = "开始";
+                    break;
                 case 2:
-                    return "fa fa-check green";
+                    obj.icon = "fa fa-check green";
+                    obj.title = "同意";
+                    break;
                 case 3:
-                    return "fa fa-mail-reply red";
+                    obj.icon = "fa fa-mail-reply red";
+                    obj.title = "再次提交";
+                    break;
                 case 5:
-                    return "fa fa-reply-all red";
+                    obj.icon = "fa fa-reply-all red";
+                    obj.title = "撤回";
+                    break;
+                case 6:
+                    obj.icon = "fa fa-hand-pointer-o red";
+                    obj.title = "委托";
+                    break;
                 case 7:
-                    return "fa fa-rotate-left";
+                    obj.icon = "fa fa-rotate-left red";
+                    obj.title = "退回";
+                    break;
                 case 9:
-                    return "fa fa-eye green";
+                    obj.icon = "fa fa-eye green";
+                    obj.title = "已阅";
+                    break;
                 default:
-                    return "fa fa-stop red";
+                    obj.icon = "fa fa-stop red";
+                    obj.title = "结束";
             }
+            return obj;
         }
     });
     </text>
@@ -542,6 +569,55 @@ else
     $('button[name=WorkFlowBtn][data-typename=@WorkFlowMenu.Print]').on('click', function () {
         $("body").print();
     });
+    </text>
+    }
+    @if (Model.Menus.Contains((int)WorkFlowMenu.Assign))
+    {
+    <text>
+
+    $('button[name=WorkFlowBtn][data-typename=@WorkFlowMenu.Assign]').on('click', function () {
+        layer.open({
+            type: 2,
+            title: '选择委托用户',
+            maxmin: false,
+            area: ['700px', '500px'],
+            content: '/Sys/Plugin/User?more=0',
+            success: function (layero, index) {
+                layero.find('iframe').focus();
+            }
+        });
+    });
+    window.getUsers = function (index, ids, obj) {
+        layer.close(index);
+        var $modal = get_modal('请求委托内容(可空)',"").modal({ backdrop: 'static', keyboard: false, show: true });
+        $modal.find(":input:first").select().focus();
+        $modal.find("#saveModal").click(function () {
+            var ProcessContent = $modal.find("textarea").val();
+            var model = {
+                FlowId: $('#FlowId').val(),
+                InstanceId: $('#InstanceId').val(),
+                MenuType: '@WorkFlowMenu.Assign',
+                ProcessContent: ProcessContent,
+                Assign: {
+                    AssignUserId: obj[0].userid,
+                    AssignUserName: obj[0].username,
+                    AssignContent: ProcessContent
+                },
+                StatusChange: {
+                    KeyName: $('input[name=PageId]').attr('data-name'),
+                    KeyValue: $('input[name=PageId]').val(),
+                    TableName: $('input[name=TableName]').val(),
+                    TargetName: $('#TargetName').val()
+                },
+                OptionParams: optionParams == undefined ? null : optionParams
+            };
+            transition(model, function () {
+                $modal.modal("hide");
+            });
+            return false;
+        });
+
+    };
     </text>
     }
 </script>

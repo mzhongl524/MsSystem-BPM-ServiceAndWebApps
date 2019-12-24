@@ -13,6 +13,14 @@
             });
             $('a[name=showflow]').click(function () {
                 var _this = $(this);
+                openFlow(_this);
+            });
+            $('table tbody tr').on('dblclick', function () {
+                var lasttd = $(this).find('a[name=showflow]');
+                openFlow(lasttd);
+            });
+            function openFlow(obj) {
+                var _this = obj;
                 var formtype = _this.attr('data-formtype');
                 var formname = _this.attr('data-formname');
                 if (formtype == 1) {
@@ -23,14 +31,14 @@
                         menuName: formname + '流程查看'
                     });
                 } else if (formtype == 0) {
-                    var flowid = $(this).attr('data-flowid');
-                    var instanceid = $(this).attr('data-instanceid');
+                    var flowid = _this.attr('data-flowid');
+                    var instanceid = _this.attr('data-instanceid');
                     utils.menu.open({
                         dataUrl: "/WF/WorkFlowInstance/Process?flowid=" + flowid + "&instanceid=" + instanceid,
                         menuName: formname + '流程查看'
                     });
                 }
-            });
+            }
         });
         isrefresh = true;
     </script>
@@ -39,8 +47,70 @@
 <div class="wrapper-content">
     <div class="row">
         <div class="ibox">
-            <div class="ibox-title text-right">
-                @await Component.InvokeAsync("Menu")
+            <div class="ibox-title text-right h-60">
+                <span class="conditionbtn"><i class="fa fa-plus"></i></span>
+                <div class="col-lg-8 col-md-8 col-sm-12 col-xs-12">
+                    <form method="get">
+                        <div class="col-lg-4 col-md-4 col-sm-4 mb5">
+                            <label class="col-lg-4 col-md-4 col-sm-4 ms-label">实例编号</label>
+                            <div class="col-lg-8 col-md-8 col-sm-8 ms-input">
+                                <input type="text" class="form-control" value="">
+                            </div>
+                        </div>
+                        <div class="col-lg-4 col-md-4 col-sm-4 mb5">
+                            <label class="col-lg-4 col-md-4 col-sm-4 ms-label">流程名称</label>
+                            <div class="col-lg-8 col-md-8 col-sm-8 ms-input">
+                                <input type="text" class="form-control" value="">
+                            </div>
+                        </div>
+                        <div class="col-lg-4 col-md-4 col-sm-4 mb5">
+                            <label class="col-lg-4 col-md-4 col-sm-4 ms-label">表单名称</label>
+                            <div class="col-lg-8 col-md-8 col-sm-8 ms-input">
+                                <input type="text" class="form-control" value="">
+                            </div>
+                        </div>
+                        <div class="col-lg-4 col-md-4 col-sm-4 mb5 no-condition">
+                            <label class="col-lg-4 col-md-4 col-sm-4 ms-label">实例编号</label>
+                            <div class="col-lg-8 col-md-8 col-sm-8 ms-input">
+                                <input type="text" class="form-control" value="">
+                            </div>
+                        </div>
+                        <div class="col-lg-4 col-md-4 col-sm-4 mb5 no-condition">
+                            <label class="col-lg-4 col-md-4 col-sm-4 ms-label">流程名称</label>
+                            <div class="col-lg-8 col-md-8 col-sm-8 ms-input">
+                                <input type="text" class="form-control" value="">
+                            </div>
+                        </div>
+                        <div class="col-lg-4 col-md-4 col-sm-4 mb5 no-condition">
+                            <label class="col-lg-4 col-md-4 col-sm-4 ms-label">表单名称</label>
+                            <div class="col-lg-8 col-md-8 col-sm-8 ms-input">
+                                <input type="text" class="form-control" value="">
+                            </div>
+                        </div>
+                        <div class="col-lg-4 col-md-4 col-sm-4 mb5 no-condition">
+                            <label class="col-lg-4 col-md-4 col-sm-4 ms-label">实例编号</label>
+                            <div class="col-lg-8 col-md-8 col-sm-8 ms-input">
+                                <input type="text" class="form-control" value="">
+                            </div>
+                        </div>
+                        <div class="col-lg-4 col-md-4 col-sm-4 mb5 no-condition">
+                            <label class="col-lg-4 col-md-4 col-sm-4 ms-label">流程名称</label>
+                            <div class="col-lg-8 col-md-8 col-sm-8 ms-input">
+                                <input type="text" class="form-control" value="">
+                            </div>
+                        </div>
+                        <div class="col-lg-4 col-md-4 col-sm-4 mb5 no-condition">
+                            <label class="col-lg-4 col-md-4 col-sm-4 ms-label">表单名称</label>
+                            <div class="col-lg-8 col-md-8 col-sm-8 ms-input">
+                                <input type="text" class="form-control" value="">
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="col-lg-4 col-md-4 col-sm-12 col-xs-12">
+                    @await Component.InvokeAsync("Menu")
+                </div>
             </div>
             <div class="ibox-content">
                 <div class="full-height-scroll">
@@ -54,9 +124,9 @@
                                     <th>表单名称</th>
                                     <th class="w150">发起人</th>
                                     <th class="w150">流程类型</th>
-                                    <th class="w150 text-center">状态</th>
-                                    <th class="w150">创建时间</th>
-                                    <th class="w100 text-center">操作</th>
+                                    <th class="w100 text-center">状态</th>
+                                    <th class="w150">审批时间</th>
+                                    <th class="w75 text-center">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -74,7 +144,7 @@
                                         <td class="text-center">
                                             @Html.Raw(HtmlExtensions.ToWorkFlowInstanceStatusIcon(item.IsFinish,item.Status))
                                         </td>
-                                        <td>@item.CreateTime.ToDateTime().ToString("yyyy-MM-dd hh:mm:ss")</td>
+                                        <td>@item.CreateTime.ToDateTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                                         <td class="text-center">
                                             @switch ((WorkFlowFormType)item.FormType)
                                             {

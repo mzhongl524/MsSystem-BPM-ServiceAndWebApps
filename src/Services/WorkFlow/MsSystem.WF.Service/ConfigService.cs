@@ -15,6 +15,7 @@ namespace MsSystem.WF.Service
     {
         private readonly HttpClient _apiClient;
         private readonly IOptions<AppSettings> _appSettings;
+
         public ConfigService(HttpClient apiClient, IOptions<AppSettings> appSettings)
         {
             _apiClient = apiClient;
@@ -23,6 +24,10 @@ namespace MsSystem.WF.Service
 
         public async Task<List<ZTree>> GetRoleTreesAsync(List<long> ids)
         {
+            //Consul服务之间调用
+
+
+
             string url = _appSettings.Value.MsApplication.url + _appSettings.Value.WorkFlow.Roles;
             var content = new StringContent(JsonConvert.SerializeObject(ids), System.Text.Encoding.UTF8, "application/json");
             var response = await _apiClient.PostAsync(url, content);
@@ -85,6 +90,19 @@ namespace MsSystem.WF.Service
             string res = await response.Content.ReadAsStringAsync();
             Guid? finalnodeid = JsonConvert.DeserializeObject<Guid?>(res);
             return finalnodeid;
+        }
+
+        /// <summary>
+        /// //对某些人进行消息推送并入库
+        /// </summary>
+        /// <param name="model"></param>
+        /// <returns></returns>
+        public async Task UrgeSendSignalR(MessagePushSomBodyDTO model)
+        {
+            string url = string.Format(_appSettings.Value.MsApplication.url + _appSettings.Value.WorkFlow.UrgeSendSignalR);
+            var content = new StringContent(model.ToJson(), System.Text.Encoding.UTF8, "application/json");
+            var response = await _apiClient.PostAsync(url, content);
+            response.EnsureSuccessStatusCode();
         }
     }
 }

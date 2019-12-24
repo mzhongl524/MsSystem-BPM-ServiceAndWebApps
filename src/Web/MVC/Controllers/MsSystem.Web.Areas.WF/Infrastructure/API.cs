@@ -56,12 +56,15 @@ namespace MsSystem.Web.Areas.WF.Infrastructure
             public static string ProcessTransitionFlowAsync(string baseUri) => $"{baseUri}/WorkFlowInstance/ProcessTransitionFlowAsync";
             public static string GetFlowImageAsync(string baseUri, Guid flowid, Guid? instanceId)
                 => $"{baseUri}/WorkFlowInstance/GetFlowImageAsync?flowid={flowid.ToString()}&InstanceId={instanceId?.ToString()}";
+
+            public static string UrgeAsync(string baseUri) => $"{baseUri}/WorkFlowInstance/UrgeAsync";
+
         }
         public static class WorkFlow
         {
             public static string GetPageAsync(string baseUri, int pageIndex, int pageSize) => $"{baseUri}/WorkFlow/GetPageAsync?pageIndex={pageIndex}&pageSize={pageSize}";
             public static string GetByIdAsync(string baseUri, Guid id) => $"{baseUri}/WorkFlow/GetByIdAsync?id={id.ToString()}";
-            public static string GetWorkFlowStartAsync(string baseUri, Guid categoryid) => $"{baseUri}/WorkFlow/GetWorkFlowStartAsync?id={categoryid.ToString()}";
+            public static string GetWorkFlowStartAsync(string baseUri, Guid categoryid) => $"{baseUri}/WorkFlow/GetWorkFlowStartAsync?categoryid={categoryid.ToString()}";
             public static string InsertAsync(string baseUri) => $"{baseUri}/WorkFlow/InsertAsync";
             public static string UpdateAsync(string baseUri) => $"{baseUri}/WorkFlow/UpdateAsync";
             public static string DeleteAsync(string baseUri) => $"{baseUri}/WorkFlow/DeleteAsync";

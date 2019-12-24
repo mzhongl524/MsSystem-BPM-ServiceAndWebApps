@@ -1,4 +1,5 @@
-﻿using JadeFramework.Core.Domain.Enum;
+﻿using JadeFramework.Core.Domain.CodeBuilder.MySQL;
+using JadeFramework.Core.Domain.Enum;
 using JadeFramework.Core.Extensions;
 using MsSystem.Web.Areas.Sys.ViewModel;
 
@@ -66,6 +67,7 @@ namespace MsSystem.Web.Areas.Sys.Infrastructure
             public static string GetAsync(string baseUri, long userid) => $"{baseUri}/User/GetAsync?userid={userid}";
             public static string GetUserDeptAsync(string baseUri, long userid) => $"{baseUri}/User/GetUserDeptAsync?userid={userid}";
             public static string LoginAsync(string baseUri) => $"{baseUri}/User/LoginAsync";
+            public static string ScanningLoginAsync(string baseUri) => $"{baseUri}/User/ScanningLoginAsync";
             public static string AddAsync(string baseUri) => $"{baseUri}/User/AddAsync";
             public static string UpdateAsync(string baseUri) => $"{baseUri}/User/UpdateAsync";
             public static string SaveUserRoleAsync(string baseUri) => $"{baseUri}/User/SaveUserRoleAsync";
@@ -74,6 +76,23 @@ namespace MsSystem.Web.Areas.Sys.Infrastructure
             public static string SaveUserDeptAsync(string baseUri) => $"{baseUri}/User/SaveUserDeptAsync";
             public static string ModifyUserHeadImgAsync(string baseUri) => $"{baseUri}/User/ModifyUserHeadImgAsync";
 
+        }
+
+        public class CodeBuilder
+        {
+            public static string GetTablesAsync(string baseUri, TableSearch search) => $"{baseUri}/CodeBuilder/GetTablesAsync?{search.ToUrlParam()}";
+            public static string GetTableColumnsAsync(string baseUri, TableSearch search) => $"{baseUri}/CodeBuilder/GetTableColumnsAsync?{search.ToUrlParam()}";
+        }
+
+        public static class Schedule
+        {
+            public static string GetPageListAsync(string baseUri, int pageIndex, int pageSize) => $"{baseUri}/schedule/GetPageListAsync?pageIndex={pageIndex}&pageSize={pageSize}";
+            public static string AddOrUpdateAsync(string baseUri) => $"{baseUri}/schedule/AddOrUpdateAsync";
+            public static string GetScheduleAsync(string baseUri, long id) => $"{baseUri}/schedule/GetScheduleAsync?id={id}";
+            public static string StartAsync(string baseUri) => $"{baseUri}/schedule/StartAsync";
+            public static string StopAsync(string baseUri) => $"{baseUri}/schedule/StopAsync";
+            public static string ExecuteJobAsync(string baseUri) => $"{baseUri}/schedule/ExecuteJobAsync";
+            public static string SuspendAsync(string baseUri) => $"{baseUri}/schedule/SuspendAsync";
         }
     }
 }

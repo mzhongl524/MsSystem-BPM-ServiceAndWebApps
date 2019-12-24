@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
-using NLog.Web;
+using Microsoft.Extensions.Hosting;
 
 namespace MsSystem.WF.API
 {
@@ -8,14 +8,15 @@ namespace MsSystem.WF.API
     {
         public static void Main(string[] args)
         {
-            CreateWebHostBuilder(args).Build().Run();
+            BuildWebHost(args).Run();
         }
 
-        public static IWebHostBuilder CreateWebHostBuilder(string[] args) =>
+
+        private static IWebHost BuildWebHost(string[] args) =>
             WebHost.CreateDefaultBuilder(args)
-                .UseNLog()
                 .UseStartup<Startup>()
-                .UseUrls("http://localhost:5003")
-                .UseKestrel();
+                .UseUrls("http://*:5003")
+                .UseKestrel()
+                .Build();
     }
 }

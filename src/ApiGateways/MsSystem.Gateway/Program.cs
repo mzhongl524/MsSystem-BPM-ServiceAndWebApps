@@ -1,7 +1,7 @@
-﻿using JadeFramework.Core.Consul;
+﻿using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace MsSystem.Gateway
 {
@@ -11,24 +11,57 @@ namespace MsSystem.Gateway
         {
             BuildWebHost(args).Run();
         }
-        public static IWebHost BuildWebHost(string[] args)
-        {
-            var configuration = new ConfigurationBuilder()
-                .AddJsonFile("appsettings.json", false, true)
-                .Build();
-            var options = new ServiceDiscoveryOptions();
-            configuration.Bind("ServiceDiscovery", options);
-            var url = options.Service.GetUrl();
-            return Microsoft.AspNetCore.WebHost.CreateDefaultBuilder(args)
-                    .ConfigureAppConfiguration((hostingContext, builder) =>
-                    {
-                        builder.SetBasePath(hostingContext.HostingEnvironment.ContentRootPath)
-                        .AddJsonFile("configuration.json", false, true);
-                    })
-                    .UseStartup<Startup>()
-                    .UseUrls(options.Service.GetUrl())
-                    .Build();
 
-        }
+
+        private static IWebHost BuildWebHost(string[] args) =>
+            WebHost.CreateDefaultBuilder(args)
+                .ConfigureAppConfiguration((hostingContext, builder) =>
+                {
+                    builder.SetBasePath(hostingContext.HostingEnvironment.ContentRootPath)
+                    .AddJsonFile("configuration.json", false, true);
+                })
+                .UseStartup<Startup>()
+                .UseUrls("http://*:5000")
+                .UseKestrel()
+                .Build();
+
+
+        //public static void Main(string[] args)
+        //{
+        //    CreateHostBuilder(args).Build().Run();
+        //}
+
+        //public static IHostBuilder CreateHostBuilder(string[] args) =>
+        //    Host.CreateDefaultBuilder(args)
+        //        .ConfigureAppConfiguration((hostingContext, builder) =>
+        //        {
+        //            builder.SetBasePath(hostingContext.HostingEnvironment.ContentRootPath)
+        //            .AddJsonFile("configuration.json", false, true);
+        //        })
+        //        .ConfigureWebHostDefaults(webBuilder =>
+        //        {
+        //            webBuilder.UseStartup<Startup>()
+        //            .UseUrls("http://*:5000")
+        //            .UseKestrel();
+        //        });
+
+        //public static void Main(string[] args)
+        //{
+        //    BuildWebHost(args).Run();
+        //}
+        //public static IWebHost BuildWebHost(string[] args)
+        //{
+        //    return Microsoft.AspNetCore.WebHost.CreateDefaultBuilder(args)
+        //            .ConfigureAppConfiguration((hostingContext, builder) =>
+        //            {
+        //                builder.SetBasePath(hostingContext.HostingEnvironment.ContentRootPath)
+        //                .AddJsonFile("configuration.json", false, true);
+        //            })
+        //            .UseStartup<Startup>()
+        //            .UseUrls("http://*:5000")
+        //            .UseKestrel()
+        //            .Build();
+
+        //}
     }
 }

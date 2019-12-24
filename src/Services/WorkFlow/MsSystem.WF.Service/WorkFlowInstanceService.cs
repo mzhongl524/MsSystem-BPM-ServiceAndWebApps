@@ -66,6 +66,10 @@ namespace MsSystem.WF.Service
                                 param = optionParams,
                                 UserId = userid
                             });
+                            if (!resids.HasItems())
+                            {
+                                return null;
+                            }
                             string res = string.Join(",", resids);
                             return res.IsNullOrEmpty() ? res : res + ",";
                         }
@@ -367,11 +371,14 @@ namespace MsSystem.WF.Service
                 }
                 else
                 {
-                    nodes.Add(new FlowNode
+                    if (!nodes.Any(m => m.Id == item.NodeId))
                     {
-                        Id = item.NodeId,
-                        Name = item.NodeName
-                    });
+                        nodes.Add(new FlowNode
+                        {
+                            Id = item.NodeId,
+                            Name = item.NodeName
+                        });
+                    }
                 }
             }
             return nodes;
@@ -437,7 +444,7 @@ namespace MsSystem.WF.Service
                     };
                     return model;
                 }
-                if (flowinstance.IsFinish == (int)WorkFlowInstanceStatus.Finish)
+                if (flowinstance.IsFinish == (int)WorkFlowInstanceStatus.Finish) //流程结束情况
                 {
                     model.Menus = new List<int>();
                     //流程打印按钮显示判断
@@ -456,6 +463,9 @@ namespace MsSystem.WF.Service
                     model.Menus.Add((int)WorkFlowMenu.Return);
                     return model;
                 }
+
+                //============= 流程运行中情况判断 =============//
+
                 //根据当前人获取可操作的按钮
                 //获取下一步的执行人
                 MsWorkFlowContext context = new MsWorkFlowContext(new JadeFramework.WorkFlow.WorkFlow
@@ -529,6 +539,12 @@ namespace MsSystem.WF.Service
                             model.Menus.Add((int)WorkFlowMenu.View);
                         }
 
+                        //委托按钮显示判断
+                        if (await CanAssign(process, flowinstance.MakerList))
+                        {
+                            model.Menus.Add((int)WorkFlowMenu.Assign);
+                        }
+
                         //终止按钮显示判断
                         var prenode = context.GetLinesForFrom(flowinstance.ActivityId);
                         if (prenode.Count == 1)
@@ -555,6 +571,28 @@ namespace MsSystem.WF.Service
                 }
             }
             return model;
+        }
+
+        /// <summary>
+        /// 判断当前用户是否能显示委托操作按钮
+        /// </summary>
+        /// <param name="process"></param>
+        /// <returns></returns>
+        private async Task<bool> CanAssign(WorkFlowProcess process,string makerlist)
+        {
+            string str = process.UserId + ",";
+            if (!makerlist.Contains(str))//当前人非执行人员
+            {
+                return false;
+            }
+            /// 将自己审批某个流程的权限赋予其他人，让其他用户代审批流程;
+            /// 规则：A委托给B，A不能再审批且不能多次委托，B可再次委托给C，同理A
+            var dbassigns = await databaseFixture.Db.WfWorkflowAssign.FindAllAsync(m => m.InstanceId == process.InstanceId && m.FlowId == process.FlowId);
+            if (dbassigns.Any(m => m.UserId == process.UserId))
+            {
+                return false;
+            }
+            return true;
         }
 
         /// <summary>
@@ -620,6 +658,7 @@ namespace MsSystem.WF.Service
                 case WorkFlowMenu.Throgh:
                     break;
                 case WorkFlowMenu.Assign:
+                    result = await ProcessTransitionAssignAsync(model);
                     break;
                 case WorkFlowMenu.CC:
                     break;
@@ -924,13 +963,15 @@ namespace MsSystem.WF.Service
             }
         }
 
+
         /// <summary>
-        /// //获取确定最终要执行的唯一节点
+        /// 获取确定最终要执行的唯一节点
         /// </summary>
         /// <param name="nextLines"></param>
         /// <param name="model"></param>
+        /// <param name="createUserId">流程发起人</param>
         /// <returns></returns>
-        private async Task<Guid?> GetFinalNodeId(List<FlowLine> nextLines, WorkFlowProcessTransition model)
+        private async Task<Guid?> GetFinalNodeId(List<FlowLine> nextLines, WorkFlowProcessTransition model,string createUserId)
         {
             var array = nextLines.First().SetInfo.CustomSQL.Split('_');
             if (array.Length < 2)
@@ -947,7 +988,7 @@ namespace MsSystem.WF.Service
                 {
                     Data = condition,
                     Param = model.OptionParams,
-                    UserId = model.UserId
+                    UserId = createUserId
                 });
             }
             else
@@ -956,7 +997,7 @@ namespace MsSystem.WF.Service
                 {
                     Data = condition,
                     Param = model.OptionParams,
-                    UserId = model.UserId
+                    UserId = createUserId
                 });
             }
             if (finalid == null)
@@ -1008,7 +1049,7 @@ namespace MsSystem.WF.Service
                             else
                             {
                                 //获取确定最终要执行的唯一节点
-                                Guid? finalid = await GetFinalNodeId(nextLines, model);
+                                Guid? finalid = await GetFinalNodeId(nextLines, model, dbflowinstance.CreateUserId);
                                 FlowNode reallynode = context.WorkFlow.Nodes[finalid.Value];
                                 dbflowinstance.IsFinish = reallynode.NodeType().ToIsFinish();
                                 if (reallynode.NodeType() == WorkFlowInstanceNodeType.EndRound)
@@ -1171,7 +1212,7 @@ namespace MsSystem.WF.Service
         /// <param name="model"></param>
         /// <param name="tran"></param>
         /// <returns></returns>
-        private async Task AddFlowNotice(List<FlowNode> viewNodes,string createuserid, WorkFlowProcessTransition model,IDbTransaction tran)
+        private async Task AddFlowNotice(List<FlowNode> viewNodes, string createuserid, WorkFlowProcessTransition model, IDbTransaction tran)
         {
             if (viewNodes.Any())
             {
@@ -1190,7 +1231,7 @@ namespace MsSystem.WF.Service
                     if (makerStr.IsNotNullOrEmpty() && makerStr != "0")
                     {
                         string[] makerlist = makerStr.Split(',');
-                        foreach (var viewuserid in makerlist.Where(m=>!string.IsNullOrEmpty(m)))
+                        foreach (var viewuserid in makerlist.Where(m => !string.IsNullOrEmpty(m)))
                         {
                             if (!dic.ContainsKey(viewuserid))
                             {
@@ -1425,9 +1466,7 @@ namespace MsSystem.WF.Service
             {
                 try
                 {
-                    var dbflow = await databaseFixture.Db.Workflow.FindByIdAsync(model.FlowId);
                     var dbflowinstance = await databaseFixture.Db.WorkflowInstance.FindByIdAsync(model.InstanceId);
-                    var dbinstanceForm = await databaseFixture.Db.WorkflowInstanceForm.FindAsync(m => m.InstanceId == dbflowinstance.InstanceId);
                     //删除流程操作记录
                     var dboperationHistory = await databaseFixture.Db.WorkflowOperationHistory.FindAllAsync(m => m.InstanceId == model.InstanceId);
                     foreach (var item in dboperationHistory)
@@ -1440,7 +1479,13 @@ namespace MsSystem.WF.Service
                     {
                         await databaseFixture.Db.WorkflowTransitionHistory.DeleteAsync(item, tran);
                     }
-
+                    //删除委托表信息
+                    var dbassigns = await databaseFixture.Db.WfWorkflowAssign.FindAllAsync(m => m.InstanceId == model.InstanceId);
+                    foreach (var item in dbassigns)
+                    {
+                        await databaseFixture.Db.WfWorkflowAssign.DeleteAsync(item, tran);
+                    }
+                    var dbinstanceForm = await databaseFixture.Db.WorkflowInstanceForm.FindAsync(m => m.InstanceId == dbflowinstance.InstanceId);
                     if ((WorkFlowFormType)dbinstanceForm.FormType == WorkFlowFormType.System)//定制表单
                     {
                         //删除流程实例表单关联记录
@@ -1518,6 +1563,83 @@ namespace MsSystem.WF.Service
         }
 
         /// <summary>
+        /// 流程委托操作
+        /// 将自己审批某个流程的权限赋予其他人，让其他用户代审批流程;
+        /// 规则：A委托给B，A不能再审批且不能多次委托，B可再次委托给C，同理A
+        /// </summary>
+        /// <param name="model"></param>
+        /// <returns></returns>
+        protected async Task<WorkFlowResult> ProcessTransitionAssignAsync(WorkFlowProcessTransition model)
+        {
+            using (var tran = databaseFixture.Db.BeginTransaction())
+            {
+                try
+                {
+                    //1、修改流程实例makerlist，替换人
+                    var dbflowinstance = await databaseFixture.Db.WorkflowInstance.FindByIdAsync(model.InstanceId);
+                    string oldreplaceStr = model.UserId + ",";
+                    string newreplaceStr = model.Assign.AssignUserId + ",";
+                    var newmakerList = dbflowinstance.MakerList.Replace(oldreplaceStr, newreplaceStr);
+                    dbflowinstance.MakerList = newmakerList;
+                    await databaseFixture.Db.WorkflowInstance.UpdateAsync(dbflowinstance, tran);
+
+                    MsWorkFlowContext context = new MsWorkFlowContext(new JadeFramework.WorkFlow.WorkFlow
+                    {
+                        FlowId = model.FlowId,
+                        FlowJSON = dbflowinstance.FlowContent,
+                        ActivityNodeId = dbflowinstance.ActivityId,
+                        PreviousId = dbflowinstance.PreviousId
+                    });
+
+                    //2、添加委托记录
+                    WfWorkflowAssign workflowAssign = new WfWorkflowAssign
+                    {
+                        Id = Guid.NewGuid(),
+                        UserId = model.UserId,
+                        UserName = model.UserName,
+                        FlowId = model.FlowId,
+                        NodeId = context.WorkFlow.ActivityNodeId,
+                        NodeName = context.WorkFlow.ActivityNode.Name,
+                        InstanceId = model.InstanceId,
+                        CreateUserId = model.UserId,
+                        AssignUserId = model.Assign.AssignUserId,
+                        AssignUserName = model.Assign.AssignUserName,
+                        Content = model.Assign.AssignContent
+                    };
+                    await databaseFixture.Db.WfWorkflowAssign.InsertAsync(workflowAssign, tran);
+
+                    //3、添加操作记录（不添加流转，因为实际情况流程并没有运行到下一个节点）
+                    string operConent = $"用户【{workflowAssign.UserName}】将流程委托给【{workflowAssign.AssignUserName}】";
+                    if (operConent.IsNotNullOrEmpty())
+                    {
+                        operConent += "<br/>请求委托意见：" + model.Assign.AssignContent;
+                    }
+                    WfWorkflowOperationHistory operationHistory = new WfWorkflowOperationHistory
+                    {
+                        OperationId = Guid.NewGuid(),
+                        InstanceId = dbflowinstance.InstanceId,
+                        CreateUserId = model.UserId,
+                        CreateUserName = model.UserName,
+                        Content = operConent,
+                        NodeId = context.WorkFlow.ActivityNodeId,
+                        NodeName = context.WorkFlow.ActivityNode.Name,
+                        TransitionType = (int)WorkFlowMenu.Assign
+                    };
+                    await databaseFixture.Db.WorkflowOperationHistory.InsertAsync(operationHistory, tran);
+
+                    tran.Commit();
+
+                    return WorkFlowResult.Success();
+                }
+                catch (Exception ex)
+                {
+                    tran.Rollback();
+                    return WorkFlowResult.Error("委托操作失败");
+                }
+            }
+        }
+
+        /// <summary>
         /// 获取审批意见
         /// </summary>
         /// <param name="model"></param>
@@ -1535,6 +1657,7 @@ namespace MsSystem.WF.Service
                         NodeName = "结束",
                         TransitionType = null,
                         CreateUserName = "",
+                        Content = "系统自动结束",
                         CreateTime = dbhistory.OrderByDescending(m => m.CreateTime).Select(m => m.CreateTime).First() + 1
                     }
                 };
@@ -1580,6 +1703,39 @@ namespace MsSystem.WF.Service
         }
 
         #endregion
+
+        /// <summary>
+        /// 流程催办
+        /// </summary>
+        /// <param name="urge"></param>
+        /// <returns></returns>
+        public async Task<WorkFlowResult> UrgeAsync(UrgeDto urge)
+        {
+            WfWorkflowUrge workflowUrge = new WfWorkflowUrge
+            {
+                CreateUserId = urge.Sender,
+                Sender = urge.Sender,
+                InstanceId = urge.InstanceId,
+                UrgeContent = urge.UrgeContent,
+                UrgeType = urge.UrgeType,
+                Id = Guid.NewGuid()
+            };
+
+            var instance = await databaseFixture.Db.WorkflowInstance.FindByIdAsync(urge.InstanceId);
+            workflowUrge.NodeId = instance.ActivityId;
+            workflowUrge.NodeName = instance.ActivityName;
+            workflowUrge.UrgeUser = instance.MakerList;
+
+            bool res = await databaseFixture.Db.WfWorkflowUrge.InsertAsync(workflowUrge);
+            if (res)
+            {
+                return WorkFlowResult.Success("", workflowUrge.UrgeUser);
+            }
+            else
+            {
+                return WorkFlowResult.Error("insert error");
+            }
+        }
 
     }
 }

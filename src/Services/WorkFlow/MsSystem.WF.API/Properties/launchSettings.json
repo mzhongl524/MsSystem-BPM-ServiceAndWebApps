@@ -1,13 +1,18 @@
-﻿{
+{
   "profiles": {
     "MsSystem.WF.API": {
       "commandName": "Project",
-      "launchBrowser": false,
       "launchUrl": "api/values",
-      "applicationUrl": "http://localhost:5003",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
-      }
+      },
+      "applicationUrl": "http://localhost:5003"
+    },
+    "Docker": {
+      "commandName": "Docker",
+      "launchUrl": "{Scheme}://{ServiceHost}:{ServicePort}/api/values",
+      "environmentVariables": {},
+      "httpPort": 55000
     }
   }
 }

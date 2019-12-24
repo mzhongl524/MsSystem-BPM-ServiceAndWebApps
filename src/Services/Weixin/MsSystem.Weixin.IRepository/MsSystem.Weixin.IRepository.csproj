@@ -5,11 +5,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="JadeFramework.Dapper" Version="1.0.1.4" />
+    <PackageReference Include="JadeFramework.Dapper" Version="1.0.1.6" />
   </ItemGroup>
   
   <ItemGroup>
     <ProjectReference Include="..\MsSystem.Weixin.Model\MsSystem.Weixin.Model.csproj" />
+    <ProjectReference Include="..\MsSystem.Weixin.ViewModel\MsSystem.Weixin.ViewModel.csproj" />
   </ItemGroup>
 
 </Project>

@@ -11,15 +11,23 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using MsSystem.Web.Areas.Sys.ViewModel;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Primitives;
 using MsSystem.Utility;
 using MsSystem.Utility.Filters;
+using MsSystem.Web.Areas.Sys.Hubs;
 using MsSystem.Web.Areas.Sys.Service;
+using MsSystem.Web.Areas.Sys.ViewModel;
+using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Threading.Tasks;
+using SignalRMessageGroups = MsSystem.Utility.SignalRMessageGroups;
 
 namespace MsSystem.Web.Areas.Sys.Controllers
 {
@@ -29,23 +37,31 @@ namespace MsSystem.Web.Areas.Sys.Controllers
     [Area("Sys")]
     public class UserController : BaseController
     {
+        private readonly string AESKey = "d4ae4a06a63a4c8687a0d884cc6cdff2";
+
         private ISysUserService _userService;
         private ISysRoleService _roleService;
         private ISysSystemService _systemService;
         private IVerificationCode _verificationCode;
+        private readonly IScanningLoginService _scanningLoginService;
         private readonly IHostingEnvironment hostingEnvironment;
+        private IHubContext<ScanningLoginHub> _hubContext;
 
         public UserController(
             ISysUserService userService,
             ISysRoleService roleService,
             ISysSystemService systemService,
             IVerificationCode verificationCode,
+            IScanningLoginService scanningLoginService,
+            IServiceProvider serviceProvider,
             IHostingEnvironment hostingEnvironment)
         {
+            _hubContext = serviceProvider.GetService<IHubContext<ScanningLoginHub>>();
             _userService = userService;
             _roleService = roleService;
             _systemService = systemService;
             _verificationCode = verificationCode;
+            this._scanningLoginService = scanningLoginService;
             this.hostingEnvironment = hostingEnvironment;
         }
 
@@ -113,6 +129,60 @@ namespace MsSystem.Web.Areas.Sys.Controllers
         {
             return View();
         }
+
+        /// <summary>
+        /// 扫码登录
+        /// </summary>
+        /// <param name="account">账户</param>
+        /// <param name="code">code</param>
+        /// <returns></returns>
+        [HttpGet]
+        [AllowAnonymous]
+        public async Task<IActionResult> ScanningLogin(string account, string code)
+        {
+            //判断code是否是本地生成，并校验是否超时
+            //string str = AESSecurity.AESDecrypt(code, AESKey);
+            //var array = str.Split('&');
+            //long ts = array[1].ToInt64();
+            //if (DateTime.Now.AddMinutes(3).ToTimeStamp() > ts)
+            //{
+            //    return Ok("二维码失效");
+            //}
+            //string qrcode = array[0];
+            string qrcode = code;
+            StringValues accessToken = "";
+            HttpContext.Request.Headers.TryGetValue("Authorization", out accessToken);
+            var res = await _scanningLoginService.ScanningLoginAsync(account, accessToken);
+            if (res.LoginStatus == LoginStatus.Success)
+            {
+                //通知页面跳转
+                var msg = SignalRMessageGroups.UserGroups.FirstOrDefault(m => m.QrCode == qrcode && m.UserId == 0);
+                msg.UserId = res.User.UserId;
+                msg.JSON = JsonConvert.SerializeObject(res);
+                SignalRMessageGroups.Clear(qrcode, msg.UserId);
+                await _hubContext.Clients.Client(msg.ConnectionId).SendAsync("HomePage", msg.QrCode);
+            }
+            return Ok(res);
+        }
+
+        [HttpGet]
+        [AllowAnonymous]
+        public async Task<IActionResult> Qr(string code)
+        {
+            if (code == null)
+            {
+                return RedirectToAction("Login");
+            }
+            SignalRMessageGroups.Clear();
+            var msg = SignalRMessageGroups.UserGroups.FirstOrDefault(m => m.QrCode == code && m.UserId > 0);
+            if (msg == null)
+            {
+                return RedirectToAction("Login");
+            }
+            await SaveLogin(JsonConvert.DeserializeObject<LoginResult<UserIdentity>>(msg.JSON));
+            return Redirect("/");
+        }
+
         /// <summary>
         /// 图形验证码
         /// </summary>
@@ -164,9 +234,7 @@ namespace MsSystem.Web.Areas.Sys.Controllers
             var loginresult = await _userService.LoginAsync(model.username, model.password);
             if (loginresult != null && loginresult.LoginStatus == LoginStatus.Success)
             {
-                ClaimsIdentity identity = new ClaimsIdentity(CookieAuthenticationDefaults.AuthenticationScheme);
-                identity.AddClaims(loginresult.User.ToClaims());
-                await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+                await SaveLogin(loginresult);
                 return new LoginResult<UserIdentity>
                 {
                     LoginStatus = LoginStatus.Success,
@@ -182,6 +250,14 @@ namespace MsSystem.Web.Areas.Sys.Controllers
                 };
             }
         }
+
+        private async Task SaveLogin(LoginResult<UserIdentity> loginResult)
+        {
+            ClaimsIdentity identity = new ClaimsIdentity(CookieAuthenticationDefaults.AuthenticationScheme);
+            identity.AddClaims(loginResult.User.ToClaims());
+            await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+        }
+
 
         #endregion
 
@@ -201,6 +277,7 @@ namespace MsSystem.Web.Areas.Sys.Controllers
         #region CURD
         [HttpGet]
         [Permission("/Sys/User/Index", ButtonType.View, false)]
+        [ActionName("Get")]
         public async Task<IActionResult> Get([FromQuery]long id)
         {
             var res = await _userService.GetAsync(id);
@@ -214,6 +291,7 @@ namespace MsSystem.Web.Areas.Sys.Controllers
         /// <returns></returns>
         [HttpPost]
         [Permission("/Sys/User/Index", ButtonType.Add, false)]
+        [ActionName("Add")]
         public async Task<IActionResult> Add([FromBody]UserShowDto dto)
         {
             dto.User.CreateUserId = UserIdentity.UserId;
@@ -228,6 +306,7 @@ namespace MsSystem.Web.Areas.Sys.Controllers
         /// <returns></returns>
         [HttpPost]
         [Permission("/Sys/User/Index", ButtonType.Edit, false)]
+        [ActionName("Update")]
         public async Task<IActionResult> Update([FromBody]UserShowDto dto)
         {
             dto.User.UpdateUserId = UserIdentity.UserId;
@@ -242,6 +321,7 @@ namespace MsSystem.Web.Areas.Sys.Controllers
         /// <returns></returns>
         [HttpPost]
         [Permission("/Sys/User/Index", ButtonType.Delete, false)]
+        [ActionName("Delete")]
         public async Task<IActionResult> Delete([FromBody]List<long> ids)
         {
             long userid = UserIdentity.UserId;
@@ -254,6 +334,7 @@ namespace MsSystem.Web.Areas.Sys.Controllers
 
         [HttpGet]
         [Authorize]
+        [ActionName("RoleBox")]
         public async Task<IActionResult> RoleBox([Bind("userid"), FromQuery]int userid)
         {
             var res = await _roleService.GetTreeAsync(userid);
@@ -262,6 +343,7 @@ namespace MsSystem.Web.Areas.Sys.Controllers
 
         [HttpPost]
         [Authorize]
+        [ActionName("RoleBoxSave")]
         public async Task<IActionResult> RoleBoxSave([FromBody]RoleBoxDto dto)
         {
             dto.CreateUserId = UserIdentity.UserId;
@@ -275,6 +357,7 @@ namespace MsSystem.Web.Areas.Sys.Controllers
 
         [HttpGet]
         [Authorize]
+        [ActionName("GetDataPrivileges")]
         public async Task<IActionResult> GetDataPrivileges([FromQuery]DataPrivilegesViewModel model)
         {
             var res = await _userService.GetPrivilegesAsync(model);
@@ -288,6 +371,7 @@ namespace MsSystem.Web.Areas.Sys.Controllers
         /// <returns></returns>
         [HttpPost]
         [Authorize]
+        [ActionName("SaveDataPrivileges")]
         public async Task<IActionResult> SaveDataPrivileges([FromBody]DataPrivilegesDto model)
         {
             var res = await _userService.SaveDataPrivilegesAsync(model);
@@ -305,6 +389,7 @@ namespace MsSystem.Web.Areas.Sys.Controllers
         /// <returns></returns>
         [HttpGet]
         [Authorize]
+        [ActionName("GetUserDept")]
         public async Task<IActionResult> GetUserDept([FromQuery]long userid)
         {
             var res = await _userService.GetUserDeptAsync(userid);
@@ -318,6 +403,7 @@ namespace MsSystem.Web.Areas.Sys.Controllers
         /// <returns></returns>
         [HttpPost]
         [Authorize]
+        [ActionName("SaveUserDept")]
         public async Task<IActionResult> SaveUserDept([FromBody]UserDeptDto dto)
         {
             var res = await _userService.SaveUserDeptAsync(dto);
@@ -351,6 +437,7 @@ namespace MsSystem.Web.Areas.Sys.Controllers
         /// <returns></returns>
         [Authorize]
         [HttpPost]
+        [ActionName("ModifyUserHeadImgAsync")]
         public async Task<bool> ModifyUserHeadImgAsync(string imgurl)
         {
             if (imgurl.IsNullOrEmpty())

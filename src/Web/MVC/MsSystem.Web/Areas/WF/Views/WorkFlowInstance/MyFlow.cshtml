@@ -17,8 +17,16 @@
                     menuName: '发起流程'
                 });
             });
+            $('table tbody tr').on('dblclick', function () {
+                var lasttd = $(this).find('a[name=showflow]');
+                openFlow(lasttd);
+            });
             $('a[name=showflow]').click(function () {
                 var _this = $(this);
+                openFlow(_this);
+            });
+            function openFlow(obj) {
+                var _this = obj;
                 var formtype = _this.attr('data-formtype');
                 var formname = _this.attr('data-formname');
                 if (formtype == 1) {
@@ -26,16 +34,48 @@
                     var formurl = _this.attr('data-formurl');
                     utils.menu.open({
                         dataUrl: formurl + "?id=" + formid,
-                        menuName: formname +'流程查看'
+                        menuName: formname + '流程查看'
                     });
                 } else if (formtype == 0) {
-                    var flowid = $(this).attr('data-flowid');
-                    var instanceid = $(this).attr('data-instanceid');
+                    var flowid = _this.attr('data-flowid');
+                    var instanceid = _this.attr('data-instanceid');
                     utils.menu.open({
                         dataUrl: "/WF/WorkFlowInstance/Process?flowid=" + flowid + "&instanceid=" + instanceid,
                         menuName: formname + '流程查看'
                     });
                 }
+            }
+            $('a[name=userUrge]').on('click', function () {
+                var instanceid = $(this).attr('data-instanceid');
+                $('input[name=instanceid]').val(instanceid);
+                $('#myModal').modal('show');
+            });
+            $('#saveModal').click(function () {
+                layer.confirm('确认提示对方催办吗？', { icon: 3, title: '提示' }, function (index) {
+                    var instanceid = $('input[name=instanceid]').val();
+                    var _this = $('a[name="showflow"][data-instanceid=' + instanceid + ']');
+                    var formtype = _this.attr('data-formtype');
+                    var url = '';
+                    if (formtype == 1) {
+                        var formid = _this.attr('data-formid');
+                        var formurl = _this.attr('data-formurl');
+                        url = formurl + "?id=" + formid;
+                    } else if (formtype == 0) {
+                        var flowid = _this.attr('data-flowid');
+                        url = "/WF/WorkFlowInstance/Process?flowid=" + flowid + "&instanceid=" + instanceid;
+                    }
+                    var model = {
+                        'InstanceId': instanceid,
+                        'UrgeType': "0,",
+                        'UrgeContent': $('textarea[name=UrgeContent]').text(),
+                        'Link': url,
+                        'Title':'流程催办'
+                    };
+                    axios.post('/WF/WorkFlowInstance/UrgeAsync', model).then(function (response) {
+                        utils.permission.authResponse(response);
+                    });
+                    window.location.reload(true);
+                });
             });
         });
     </script>
@@ -77,20 +117,25 @@
                                         <td>@item.UserName</td>
                                         <td>@(((WorkFlowFormType)item.FormType).GetDescription())</td>
                                         <td class="text-center">@Html.Raw(HtmlExtensions.ToWorkFlowInstanceStatusIcon(item.IsFinish,item.Status))</td>
-                                        <td>@item.CreateTime.ToDateTime().ToString("yyyy-MM-dd hh:mm:ss")</td>
+                                        <td>@item.CreateTime.ToDateTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                                         <td class="text-center">
+                                            @if (item.IsFinish == 0 && (WorkFlowStatus)item.Status == WorkFlowStatus.Running)
+                                            {
+                                                <a name="userUrge" data-instanceid="@item.InstanceId">催办</a>
+                                                <span>/</span>
+                                            }
                                             @switch ((WorkFlowFormType)item.FormType)
                                             {
                                                 case WorkFlowFormType.System:
-                                                    <a name="showflow" data-formtype="@item.FormType" 
-                                                       data-formid="@item.FormData" 
+                                                    <a name="showflow" data-instanceid="@item.InstanceId" data-formtype="@item.FormType"
+                                                       data-formid="@item.FormData"
                                                        data-formname="@item.FormName"
                                                        data-formurl="@item.FormUrl">查看</a>
                                                     break;
                                                 case WorkFlowFormType.Custom:
-                                                    <a name="showflow" data-formtype="@item.FormType"  
-                                                       data-formname="@item.FormName" 
-                                                       data-flowid="@item.FlowId" 
+                                                    <a name="showflow" data-formtype="@item.FormType"
+                                                       data-formname="@item.FormName"
+                                                       data-flowid="@item.FlowId"
                                                        data-instanceid="@item.InstanceId">查看</a>
                                                     break;
                                             }
@@ -102,6 +147,36 @@
                     </div>
                 </div>
                 <div class="jquery-pager" data-pageindex="@Model.PageIndex" data-pagesize="@Model.PageSize" data-datacount="@Model.TotalItems"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<div class="modal" id="myModal" style="overflow: auto;" tabindex="-1" data-backdrop="static">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <a class="close" data-dismiss="modal" aria-hidden="true">&times;</a>
+                <h4 class="modal-title">催办提醒</h4>
+            </div>
+            <div class="modal-body ui-front">
+                <input type="hidden" name="instanceid" value="" />
+                <span>催办信息：</span>
+                <textarea class="form-control" name="UrgeContent" maxlength="30" style="min-height: 150px;max-width:100%;min-width:100%; margin:10px 0px">请审批流程</textarea>
+
+                <div style="margin:15px 0;">
+                    <span>通知方式：</span>
+                    <label style="cursor:pointer"><input type="checkbox" checked="checked" name="SendSignalr" />内部消息</label>
+                    <label style="margin-left:20px" title="暂不支持"><input type="checkbox" name="SendEMail" disabled readonly />邮件提示</label>
+                    <label style="margin-left:20px" title="暂不支持"><input type="checkbox" name="SendSMS" disabled readonly />短信提示</label>
+                    <label style="margin-left:20px" title="暂不支持"><input type="checkbox" name="SendWeChat" disabled readonly />企业微信</label>
+                </div>
+
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-sm btn-permission btn-permission-search" id="saveModal"><i class="fa fa-location-arrow"></i><span class="ml5">立即催办</span></button>
+                    <button type="button" class="btn btn-sm btn-permission" data-dismiss="modal"><i class="fa fa-mail-reply"></i><span class="ml5">关闭</span></button>
+                </div>
             </div>
         </div>
     </div>

@@ -7,8 +7,8 @@ namespace MsSystem.OA.IRepository
         IOaLeaveRepository OaLeaveRepository { get; }
 
         IOaMessageRepository OaMessage { get; }
-        IOaMessageUserReadRepository OaMessageUserRead { get; }
         IOaMessageUserRepository OaMessageUser { get; }
         IOaWorkflowsqlRepository OaWorkflowsql { get; }
+        IOaChatRepository OaChat { get; }
     }
 }

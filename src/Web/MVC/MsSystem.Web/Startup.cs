@@ -1,6 +1,4 @@
-﻿using Autofac;
-using Autofac.Extensions.DependencyInjection;
-using JadeFramework.Cache;
+﻿using JadeFramework.Cache;
 using JadeFramework.Core.Domain.Container;
 using JadeFramework.Core.Security;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -14,14 +12,15 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.WebEncoders;
 using MsSystem.Utility;
 using MsSystem.Web.Areas.OA.Service;
+using MsSystem.Web.Areas.Sys.Hubs;
 using MsSystem.Web.Areas.Sys.Service;
 using MsSystem.Web.Areas.Weixin.Service;
 using MsSystem.Web.Areas.WF.Service;
 using MsSystem.Web.Infrastructure;
-using NLog.Extensions.Logging;
-using NLog.Web;
 using Polly;
 using Polly.Extensions.Http;
+using Serilog;
+using Serilog.Sinks.Elasticsearch;
 using System;
 using System.Net.Http;
 using System.Text.Encodings.Web;
@@ -35,10 +34,19 @@ namespace MsSystem.Web
         public Startup(IConfiguration configuration)
         {
             Configuration = configuration;
+
+            Log.Logger = new LoggerConfiguration()
+                .Enrich.FromLogContext()
+                .WriteTo.MySQL(Configuration["LogConfig:MySQL"],tableName:"weblog")
+                .WriteTo.Elasticsearch(new ElasticsearchSinkOptions(new Uri(Configuration["LogConfig:ElasticsearchUri"]))
+                {
+                    AutoRegisterTemplate = true,
+                })
+            .CreateLogger();
         }
 
         // This method gets called by the runtime. Use this method to add services to the container.
-        public IServiceProvider ConfigureServices(IServiceCollection services)
+        public void ConfigureServices(IServiceCollection services)
         {
             services.AddCustomMvc(Configuration)
                 .AddHttpClientServices(Configuration)
@@ -47,49 +55,55 @@ namespace MsSystem.Web
                 .AddWeixinHttpClientServices()
                 .AddWfHttpClientServices()
                 .AddCustomAuthentication();
-
+            services.AddCors(options =>
+            {
+                options.AddPolicy("CorsPolicy",
+                    builder => builder
+                    .AllowAnyMethod()
+                    .AllowAnyHeader()
+                    .SetIsOriginAllowed((host) => true)
+                    .AllowCredentials());
+            });
+            services.AddSignalR().AddNewtonsoftJsonProtocol();
             //缓存
             services.AddScoped<ICachingProvider, MemoryCachingProvider>();
             //验证码
             services.AddScoped<IVerificationCode, VerificationCode>();
             services.AddScoped<IPermissionStorageContainer, PermissionStorageService>();
-            var container = new ContainerBuilder();
-            container.Populate(services);
-            return new AutofacServiceProvider(container.Build());
         }
 
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
-        public void Configure(IApplicationBuilder app, IHostingEnvironment env, ILoggerFactory loggerFactory)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env, ILoggerFactory loggerFactory)
         {
-            loggerFactory.AddNLog();
-            if (env.IsDevelopment())
-            {
-                app.UseDeveloperExceptionPage();
-                app.UseBrowserLink();
-                env.ConfigureNLog("NLog.Development.config");
-            }
-            else
-            {
-                app.UseExceptionHandler("/Error/Index");
-                env.ConfigureNLog("NLog.config");
-            }
+            loggerFactory.AddSerilog();
             app.UseForwardedHeaders(new ForwardedHeadersOptions
             {
                 ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
             });
-            app.UseAuthentication();
+            app.UseCors("CorsPolicy");
             app.UseStaticFiles();
             app.UseSession();
-            app.UseMvc(routes =>
+            app.UseRouting();
+            app.UseAuthentication();
+            app.UseAuthorization();
+            app.UseEndpoints(routes =>
             {
-                routes.MapRoute(
-                    name: "areaRoute",
-                    template: "{area:exists}/{controller=Home}/{action=Index}/{id?}");
+                routes.MapControllerRoute(
+                    name: "TurntableRoute",
+                    pattern: "{area:exists}/{controller=Activity}/{action=Turntable}/{id}.html");
 
-                routes.MapRoute(
+                routes.MapControllerRoute(
+                    name: "areaRoute",
+                    pattern: "{area:exists}/{controller=Home}/{action=Index}/{id?}");
+
+                routes.MapControllerRoute(
                     name: "default",
-                    template: "{controller=Home}/{action=Index}/{id?}");
+                    pattern: "{controller=Home}/{action=Index}/{id?}");
+            });
+            app.UseEndpoints(routes =>
+            {
+                routes.MapHub<ScanningLoginHub>("/scanningLoginHub", options => options.Transports = Microsoft.AspNetCore.Http.Connections.HttpTransports.All);
             });
         }
 
@@ -100,9 +114,23 @@ namespace MsSystem.Web
         {
             services.AddOptions();
             services.Configure<WebEncoderOptions>(options => options.TextEncoderSettings = new TextEncoderSettings(UnicodeRanges.BasicLatin, UnicodeRanges.CjkUnifiedIdeographs));
-            services.AddMvc(option => option.Filters.Add(typeof(HttpGlobalExceptionFilter))).AddJsonOptions(op => op.SerializerSettings.ContractResolver = new Newtonsoft.Json.Serialization.DefaultContractResolver());//修改默认首字母为大写
+
+            services.AddControllersWithViews(option => option.Filters.Add(typeof(HttpGlobalExceptionFilter)))
+                //.AddRazorRuntimeCompilation()
+                .AddNewtonsoftJson(op => op.SerializerSettings.ContractResolver = new Newtonsoft.Json.Serialization.DefaultContractResolver());//修改默认首字母为大写
             services.AddMemoryCache();
-            services.AddSession();
+
+            string redisHost = configuration.GetSection("RedisConfig").GetSection("Redis_Default").GetValue<string>("Connection");
+            services.AddDistributedRedisCache(options =>
+            {
+                options.Configuration = redisHost;
+            });
+            services.AddSession(options =>
+            {
+                options.IdleTimeout = TimeSpan.FromHours(2); //session活期时间
+                options.Cookie.HttpOnly = true;//设为httponly
+            });
+            //services.AddSession();
             return services;
         }
         public static IServiceCollection AddSysHttpClientServices(this IServiceCollection services)
@@ -144,6 +172,26 @@ namespace MsSystem.Web
                    .AddPolicyHandler(GetRetryPolicy())
                    .AddPolicyHandler(GetCircuitBreakerPolicy());
 
+            services.AddHttpClient<ICodeBuilderService, CodeBuilderService>()
+                   .SetHandlerLifetime(TimeSpan.FromMinutes(5))
+                   .AddHttpMessageHandler<HttpClientAuthorizationDelegatingHandler>()
+                   .AddPolicyHandler(GetRetryPolicy())
+                   .AddPolicyHandler(GetCircuitBreakerPolicy());
+
+
+            services.AddHttpClient<IScheduleService, ScheduleService>()
+                   .SetHandlerLifetime(TimeSpan.FromMinutes(5))
+                   .AddHttpMessageHandler<HttpClientAuthorizationDelegatingHandler>()
+                   .AddPolicyHandler(GetRetryPolicy())
+                   .AddPolicyHandler(GetCircuitBreakerPolicy());
+
+            //services.AddScoped<IScanningLoginService, ScanningLoginService>();
+
+            services.AddHttpClient<IScanningLoginService, ScanningLoginService>()
+                   .AddHttpMessageHandler<HttpClientAuthorizationDelegatingHandler>()
+                   .SetHandlerLifetime(TimeSpan.FromMinutes(5))
+                   .AddPolicyHandler(GetRetryPolicy())
+                   .AddPolicyHandler(GetCircuitBreakerPolicy());
 
             return services;
         }
@@ -159,10 +207,20 @@ namespace MsSystem.Web
                     .AddHttpMessageHandler<HttpClientAuthorizationDelegatingHandler>()
                     .AddPolicyHandler(GetRetryPolicy())
                     .AddPolicyHandler(GetCircuitBreakerPolicy());
+            services.AddHttpClient<IOaChatService, OaChatService>()
+                    .SetHandlerLifetime(TimeSpan.FromMinutes(5))
+                    .AddHttpMessageHandler<HttpClientAuthorizationDelegatingHandler>()
+                    .AddPolicyHandler(GetRetryPolicy())
+                    .AddPolicyHandler(GetCircuitBreakerPolicy());
             return services;
         }
         public static IServiceCollection AddWeixinHttpClientServices(this IServiceCollection services)
         {
+            services.AddHttpClient<IAccountService, AccountService>()
+                   .SetHandlerLifetime(TimeSpan.FromMinutes(5))
+                   .AddHttpMessageHandler<HttpClientAuthorizationDelegatingHandler>()
+                   .AddPolicyHandler(GetRetryPolicy())
+                   .AddPolicyHandler(GetCircuitBreakerPolicy());
             services.AddHttpClient<IRuleService, RuleService>()
                    .SetHandlerLifetime(TimeSpan.FromMinutes(5))
                    .AddHttpMessageHandler<HttpClientAuthorizationDelegatingHandler>()

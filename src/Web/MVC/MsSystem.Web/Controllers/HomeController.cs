@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Mvc;
 using MsSystem.Web.Areas.OA.Service;
 using MsSystem.Web.Areas.OA.ViewModel;
 using MsSystem.Web.Areas.Sys.Service;
-using System.Linq;
 using System.Threading.Tasks;
 
 namespace MsSystem.Web.Controllers
@@ -22,9 +21,10 @@ namespace MsSystem.Web.Controllers
             IPermissionStorageContainer permissionStorage)
         {
             _resourceService = resourceServicee;
-            this._messageService = messageService;
+            _messageService = messageService;
             _permissionStorage = permissionStorage;
         }
+
         /// <summary>
         /// 首页
         /// </summary>
@@ -32,29 +32,16 @@ namespace MsSystem.Web.Controllers
         [HttpGet]
         public async Task<IActionResult> Index()
         {
-            ViewBag.User = this.UserIdentity;
-            //读取左侧菜单
-            var resources = await _resourceService.GetLeftTreeAsync(UserIdentity.UserId);
-            if (resources.Any())
+            var messagePage = await _messageService.MyListAsync(new OaMessageMyListSearch()
             {
-                //获取消息
-                var messagePage = await _messageService.MyListAsync(new OaMessageMyListSearch()
-                {
-                    IsDel = 0,
-                    IsRead = 0,
-                    PageIndex = 1,
-                    PageSize = 10,
-                    UserId = UserIdentity.UserId
-                });
-                ViewBag.MessagePage = messagePage;
-                //读取该用户全部操作权限并缓存
-                await _permissionStorage.InitAsync();
-                return View(resources);
-            }
-            else
-            {
-                return Redirect("/error/nomenu");
-            }
+                IsDel = 0,
+                IsRead = 0,
+                PageIndex = 1,
+                PageSize = 10,
+                UserId = UserIdentity.UserId
+            });
+            ViewBag.MessagePage = messagePage;
+            return View();
         }
         /// <summary>
         /// 默认打开页面

@@ -3,8 +3,6 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using NLog.Extensions.Logging;
-using NLog.Web;
 
 namespace MsSystem.Identity
 {
@@ -20,33 +18,28 @@ namespace MsSystem.Identity
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddServiceRegistration();
+
+            //services.AddZipkin(Configuration.GetSection(nameof(ZipkinOptions)));
+
+            //services.AddServiceRegistration();
             services.AddIdentityServer()
                 .AddDeveloperSigningCredential()
                 .AddInMemoryApiResources(Config.GetApiResources())
                 .AddInMemoryClients(Config.GetClients())
                 .AddProfileService<ProfileService>();
 
-            services.AddMvc();
+
+            services.AddControllers();
         }
-        public void Configure(IApplicationBuilder app, IHostingEnvironment env, ILoggerFactory loggerFactory)
+        public void Configure(IApplicationBuilder app)
         {
-            loggerFactory.AddNLog();
-            if (env.IsDevelopment())
-            {
-                app.UseDeveloperExceptionPage();
-                env.ConfigureNLog("NLog.Development.config");
-            }
-            else
-            {
-                env.ConfigureNLog("NLog.config");
-            }
-            app.UseMvc();
+            //app.UseZipkin();
+            app.UseRouting();
             app.UseIdentityServer();
-            app.UseServiceRegistration(new ServiceCheckOptions
-            {
-                HealthCheckUrl = "api/HealthCheck/Ping"
-            });
+            //app.UseServiceRegistration(new ServiceCheckOptions
+            //{
+            //    HealthCheckUrl = "api/HealthCheck/Ping"
+            //});
         }
     }
 }

@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
-using NLog.Web;
+using Microsoft.Extensions.Hosting;
 
 namespace MsSystem.Weixin.API
 {
@@ -8,14 +8,16 @@ namespace MsSystem.Weixin.API
     {
         public static void Main(string[] args)
         {
-            CreateWebHostBuilder(args).Build().Run();
+            BuildWebHost(args).Run();
         }
 
-        public static IWebHostBuilder CreateWebHostBuilder(string[] args) =>
+
+        private static IWebHost BuildWebHost(string[] args) =>
             WebHost.CreateDefaultBuilder(args)
-                .UseNLog()
                 .UseStartup<Startup>()
+                .UseUrls("http://*:5004")
                 .UseKestrel()
-                .UseUrls("http://localhost:5004");
+                .Build();
+
     }
 }
